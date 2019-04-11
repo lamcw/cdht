@@ -74,10 +74,9 @@ class FileRequestHandler(socketserver.StreamRequestHandler,
         """File is on this host, ack and transmit."""
         logger.info(f'File {self.message.filename} is here.')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            receiver_port = CDHT_TCP_BASE_PORT + self.message.sender
-            sock.connect((CDHT_HOST, receiver_port))
+            sock.connect((CDHT_HOST, CDHT_TCP_BASE_PORT + self.message.sender))
             response = Message(Action.FILE_REQUEST_ACK)
             response.sender = self.server.server_address[1] - CDHT_TCP_BASE_PORT
-            self.wfile.write(bytes(response.format(), MESSAGE_ENCODING))
+            sock.sendall(bytes(response.format(), MESSAGE_ENCODING))
         logger.info(f'A response message, destined for peer'
                     '{self.message.sender}, has been sent')
