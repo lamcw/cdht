@@ -43,6 +43,7 @@ Send:
 {
     'action': PING_REQUEST,
     'sender': 1
+    'succ': 1
 }
 
 Receive:

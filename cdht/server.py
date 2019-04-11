@@ -26,8 +26,8 @@ class MessageDeserializerMixin:
         self.message = Message.from_json(json_str)
 
 
-class PingHandler(socketserver.DatagramRequestHandler,
-                  MessageDeserializerMixin):
+class PingHandler(MessageDeserializerMixin,
+                  socketserver.DatagramRequestHandler):
     """
     Handle ping requests.
 
@@ -42,13 +42,20 @@ class PingHandler(socketserver.DatagramRequestHandler,
             f'A ping request message was received from Peer {self.message.sender}'
         )
 
+        if self.message.succ == 1:
+            self.server.peer.pred_peer_id = self.message.succ
+        else:
+            self.server.peer.pred_peer_id_2 = self.message.succ
+        logger.debug(f'pred={self.server.peer.pred_peer_id}')
+        logger.debug(f'pred={self.server.peer.pred_peer_id_2}')
+
         response = Message(Action.PING_RESPONSE)
         response.sender = self.server.server_address[1] - CDHT_UDP_BASE_PORT
         self.wfile.write(bytes(response.format(), MESSAGE_ENCODING))
 
 
-class FileRequestHandler(socketserver.StreamRequestHandler,
-                         MessageDeserializerMixin):
+class FileRequestHandler(MessageDeserializerMixin,
+                         socketserver.StreamRequestHandler):
     def handle(self):
         if (self.message.action != Action.FILE_REQUEST
                 or self.message.action != Action.FILE_REQUEST_FORWARD):
@@ -78,5 +85,5 @@ class FileRequestHandler(socketserver.StreamRequestHandler,
             response = Message(Action.FILE_REQUEST_ACK)
             response.sender = self.server.server_address[1] - CDHT_TCP_BASE_PORT
             sock.sendall(bytes(response.format(), MESSAGE_ENCODING))
-        logger.info(f'A response message, destined for peer'
-                    '{self.message.sender}, has been sent')
+        logger.info(f'A response message, destined for peer '
+                    f'{self.message.sender}, has been sent')
