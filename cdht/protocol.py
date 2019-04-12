@@ -71,6 +71,7 @@ Receive:
 {
     'sender': 4,
     'action': FILE_REQUEST_ACK
+    'filename': '0159'
 }
 {
     'sender': 4,
@@ -93,20 +94,26 @@ MESSAGE_ENCODING = 'utf-8'
 
 def cdht_hash(n, factor=256):
     """Hash filename according to protocol."""
-    return n % factor
+    return int(n) % factor
 
 
 def key_match_peer(peer, key, forward_callback, process_callback):
     """
     Decide if key matches a peer.
 
-    :param peer: peer ID
+    :param peer: peer
     :param key: filename
     :param forward_callback: this function is called if key matches peer
     :param process_callback: this function is called if key does not match peer
     """
-    file_location = cdht_hash(key)
-    forward_callback() if peer < file_location else process_callback()
+    hashed_value = cdht_hash(key)
+    if hashed_value > peer.id:
+        if peer.pred_peer_id > peer.id:
+            process_callback()
+        else:
+            forward_callback()
+    else:
+        process_callback()
 
 
 class InvalidMessageError(ValueError):
@@ -164,8 +171,9 @@ class Action(IntEnum):
 
 
 class Message(JsonSerializable, JsonDeserializable):
-    def __init__(self, action=Action.INVALID):
+    def __init__(self, action=Action.INVALID, encoding=MESSAGE_ENCODING):
         self.action = action
+        self.encoding = encoding
 
     @classmethod
     def from_raw_buffer(cls, buffer, encoding=MESSAGE_ENCODING):
@@ -200,7 +208,11 @@ class Message(JsonSerializable, JsonDeserializable):
         Format: content_length + '\n' + content
         """
         s = self.json()
-        return str(len(s.encode(MESSAGE_ENCODING))) + '\n' + s
+        return str(len(s.encode(self.encoding))) + '\n' + s
+
+    def byte_string(self):
+        """Format the message into byte string."""
+        return bytes(self.format(), self.encoding)
 
     def __str__(self):
         return self.json()

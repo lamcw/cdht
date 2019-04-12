@@ -1,9 +1,9 @@
 """Server implementation used in CDHT."""
 import logging
-import socket
 import socketserver
 from copy import deepcopy
 
+from .client import TCPClient
 from .config import CDHT_HOST, CDHT_TCP_BASE_PORT, CDHT_UDP_BASE_PORT
 from .protocol import (MESSAGE_ENCODING, Action, InvalidMessageError, Message,
                        key_match_peer)
@@ -43,9 +43,9 @@ class PingHandler(MessageDeserializerMixin,
         )
 
         if self.message.succ == 1:
-            self.server.peer.pred_peer_id = self.message.succ
+            self.server.peer.pred_peer_id = self.message.sender
         else:
-            self.server.peer.pred_peer_id_2 = self.message.succ
+            self.server.peer.pred_peer_id_2 = self.message.sender
         logger.debug(f'pred={self.server.peer.pred_peer_id}')
         logger.debug(f'pred={self.server.peer.pred_peer_id_2}')
 
@@ -54,36 +54,44 @@ class PingHandler(MessageDeserializerMixin,
         self.wfile.write(bytes(response.format(), MESSAGE_ENCODING))
 
 
-class FileRequestHandler(MessageDeserializerMixin,
+class FileMessageHandler(MessageDeserializerMixin,
                          socketserver.StreamRequestHandler):
     def handle(self):
-        if (self.message.action != Action.FILE_REQUEST
-                or self.message.action != Action.FILE_REQUEST_FORWARD):
-            raise InvalidMessageError('Not a file request.')
+        """Handle a file request ,transfer and ack."""
+        action = self.message.action
 
-        peer_id = self.server.server_address[1] - CDHT_TCP_BASE_PORT
-        key_match_peer(peer_id, self.message.filename, self.forward,
-                       self.process_request)
+        if (action == Action.FILE_REQUEST
+                or action == Action.FILE_REQUEST_FORWARD):
+            key_match_peer(self.server.peer, self.message.filename,
+                           self.forward, self.process_request)
+        elif action == Action.FILE_REQUEST_ACK:
+            logger.info(f'Received a response message from peer '
+                        f'{self.message.sender}, which  has the file '
+                        f'{self.message.filename}')
+            logger.info('We now start receiving the file...')
+        else:
+            raise InvalidMessageError(
+                f'Invalid message over TCP: {self.message}')
 
     def forward(self):
         """File is not on this host, forward request to immediate successor."""
         logger.info(f'File {self.message.filename} is not stored here.')
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect((CDHT_HOST,
-                          CDHT_TCP_BASE_PORT + self.server.peer.succ_peer_id))
-            forwarded_msg = deepcopy(self.message)
-            forwarded_msg.action = Action.FILE_REQUEST_FORWARD
-            sock.sendall(bytes(forwarded_msg.format(), MESSAGE_ENCODING))
-            logger.info(
-                'File request message has been forwarded to my successor.')
+        addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self.server.peer.succ_peer_id)
+        forward_client = TCPClient(addr)
+        forwarded_msg = deepcopy(self.message)
+        forwarded_msg.action = Action.FILE_REQUEST_FORWARD
+        forward_client.send(forwarded_msg.byte_string())
+        logger.info('File request message has been forwarded to my successor.')
 
     def process_request(self):
         """File is on this host, ack and transmit."""
         logger.info(f'File {self.message.filename} is here.')
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect((CDHT_HOST, CDHT_TCP_BASE_PORT + self.message.sender))
-            response = Message(Action.FILE_REQUEST_ACK)
-            response.sender = self.server.server_address[1] - CDHT_TCP_BASE_PORT
-            sock.sendall(bytes(response.format(), MESSAGE_ENCODING))
+        addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self.message.sender)
+        response_client = TCPClient(addr)
+        response = Message(Action.FILE_REQUEST_ACK)
+        response.sender = self.server.server_address[1] - CDHT_TCP_BASE_PORT
+        response.filename = self.message.filename
+        response_client.send(response.byte_string())
         logger.info(f'A response message, destined for peer '
                     f'{self.message.sender}, has been sent')
+        # TODO transfer file
