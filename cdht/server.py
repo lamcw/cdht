@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 class LogMixin:
     log_name = 'log'
 
-    def setup(self):
-        super().setup()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.INFO)
         fh = logging.FileHandler(self.log_name, mode='w', delay=True)
@@ -166,16 +166,14 @@ class FileSendHandler(MessageDeserializerMixin,
                 f'Invalid message over UDP: {self.message}')
 
 
-class FileReceiveHandler(MessageDeserializerMixin, LogMixin,
+class FileReceiveHandler(MessageDeserializerMixin,
                          socketserver.DatagramRequestHandler):
-    log_name = 'requesting_log.txt'
-
     def handle(self):
         """Handle received file chunks."""
         if self.message.action == Action.FILE_TRANSFER:
             msg = self.message
             self.server.file_buffer_append(msg.raw)
-            self.logger.info(
+            self.server.logger.info(
                 f'rcv\t\ttime\t\t{msg.seq}\t\t{len(msg.raw)}\t\t{msg.ack}')
             self.ack(msg.seq + len(msg.raw), msg.mss)
 
@@ -201,7 +199,8 @@ class FileReceiveHandler(MessageDeserializerMixin, LogMixin,
         ack.seq = 0
         ack.ack = ack_no
 
-        self.logger.info(f'snd\t\ttime\t\t{ack.seq}\t\t{mss}\t\t{ack_no}')
+        self.server.logger.info(
+            f'snd\t\ttime\t\t{ack.seq}\t\t{mss}\t\t{ack_no}')
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(
                 ack.byte_string(),
@@ -217,7 +216,9 @@ class FileReceiveHandler(MessageDeserializerMixin, LogMixin,
         self.server.server_close()
 
 
-class FileReceiveServer(socketserver.UDPServer):
+class FileReceiveServer(LogMixin, socketserver.UDPServer):
+    log_name = 'requesting_log.txt'
+
     def __init__(self, *args, recv_file=None, **kwargs):
         super().__init__(*args, **kwargs)
         if recv_file:
@@ -231,7 +232,8 @@ class FileReceiveServer(socketserver.UDPServer):
         self.recv_file.write(b64decode(self._buffer))
 
 
-class FileSendServer(socketserver.UDPServer):
+class FileSendServer(LogMixin, socketserver.UDPServer):
+    log_name = 'responding_log.txt'
     timeout = CDHT_TRANSFER_TIMEOUT_SEC
 
     def __init__(self,
@@ -249,12 +251,6 @@ class FileSendServer(socketserver.UDPServer):
         self._in_transit_packet_index = 0
         self._dest_addr = dest_addr
         self._client = UDPClient()
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.INFO)
-        fh = logging.FileHandler('responding_log.txt', mode='w', delay=True)
-        fh.setLevel(logging.INFO)
-        self.logger.addHandler(fh)
-        self.logger.propagate = False
         self.alive = True
 
         # send the first packet
