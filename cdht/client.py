@@ -20,7 +20,8 @@ class UDPClient(BaseClient):
         super().__init__(socket.AF_INET, socket.SOCK_DGRAM)
 
     def send(self, addr, buf):
-        pass
+        with self.socket as sock:
+            sock.sendto(buf, addr)
 
 
 class TCPClient(BaseClient):

@@ -76,7 +76,23 @@ Receive:
 {
     'sender': 4,
     'action': FILE_TRANSFER,
-    'data': ...
+    'seq': 0,
+    'ack': 0,
+    'mss': 400,
+    'raw': ...
+}
+{
+    'sender': 8,
+    'action': FILE_TRANSFER_ACK,
+    'seq': 0
+    'ack': 401
+}
+{
+    'sender': 4,
+    'action': FILE_TRANSFER,
+    'seq': 801,
+    'last': true
+    'raw': ...
 }
 
 3. Departing the network
@@ -97,23 +113,20 @@ def cdht_hash(n, factor=256):
     return int(n) % factor
 
 
-def key_match_peer(peer, key, forward_callback, process_callback):
+def key_match_peer(peer, key):
     """
-    Decide if key matches a peer.
+    Determine if key matches a peer.
 
     :param peer: peer
     :param key: filename
-    :param forward_callback: this function is called if key matches peer
-    :param process_callback: this function is called if key does not match peer
     """
     hashed_value = cdht_hash(key)
     if hashed_value > peer.id:
         if peer.pred_peer_id > peer.id:
-            process_callback()
+            return True
         else:
-            forward_callback()
-    else:
-        process_callback()
+            return False
+    return True
 
 
 class InvalidMessageError(ValueError):
@@ -201,18 +214,19 @@ class Message(JsonSerializable, JsonDeserializable):
                 'Message must contain an \"action\" field')
         return msg
 
-    def format(self):
+    def format(self, **kwargs):
         r"""
         Format message to string according to the protocol.
 
         Format: content_length + '\n' + content
         """
-        s = self.json()
+        s = self.json(**kwargs)
         return str(len(s.encode(self.encoding))) + '\n' + s
 
     def byte_string(self):
         """Format the message into byte string."""
-        return bytes(self.format(), self.encoding)
+        return bytes(self.format(ensure_ascii=False, separators=(',', ':')),
+                     self.encoding)
 
     def __str__(self):
         return self.json()

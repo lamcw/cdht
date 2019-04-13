@@ -57,7 +57,8 @@ def run():
 
     logging.basicConfig(level=args.log)
 
-    peer = Peer(args.peer_id, args.succ_peer_id, args.succ_peer_id_2)
+    peer = Peer(args.peer_id, args.succ_peer_id, args.succ_peer_id_2, args.mss,
+                args.drop_probability)
     prompt = CDHTPrompt(peer)
     prompt_thread = threading.Thread(target=prompt.cmdloop)
 

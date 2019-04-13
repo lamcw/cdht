@@ -12,6 +12,10 @@ class CDHTPrompt(Cmd):
         super().__init__()
         self._peer = peer
 
+    def emptyline(self):
+        """Do nothing when enter is pressed and nothing in buffer."""
+        pass
+
     def do_request(self, arg):
         """
         Request a file from peer.
@@ -33,7 +37,15 @@ class CDHTPrompt(Cmd):
             print('Argument is not an integer')
             return
 
-        self._peer.request_file(arg)
+        try:
+            self._peer.request_file(arg)
+        except ValueError as e:
+            print(e)
+
+    def do_p(self, arg):
+        """Print debug info."""
+        if arg == 'id':
+            print(self._peer.id)
 
     def do_quit(self, arg):
         """Depart from network."""
