@@ -14,14 +14,16 @@ class BaseClient(ABC):
     def send(self, buf):
         pass
 
+    def close(self):
+        self.socket.close()
+
 
 class UDPClient(BaseClient):
     def __init__(self):
         super().__init__(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def send(self, addr, buf):
-        with self.socket as sock:
-            sock.sendto(buf, addr)
+    def send(self, buf, addr):
+        self.socket.sendto(buf, addr)
 
 
 class TCPClient(BaseClient):
