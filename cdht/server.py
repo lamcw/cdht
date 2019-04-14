@@ -152,6 +152,7 @@ class FileSendHandler(MessageDeserializerMixin,
                 # send next packet
                 self.server.send_next_packet()
                 if not self.server.alive:
+                    Thread(target=self.server.shutdown).start()
                     return
                 pkt = self.server.in_transit_packet
                 self.server.logger.info(
@@ -201,10 +202,11 @@ class FileReceiveHandler(MessageDeserializerMixin,
 
         self.server.logger.info(
             f'snd\t\ttime\t\t{ack.seq}\t\t{mss}\t\t{ack_no}')
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.sendto(
-                ack.byte_string(),
-                (CDHT_HOST, CDHT_TRANSFER_BASE_PORT + self.message.sender))
+        ack_client = UDPClient()
+        ack_client.send(
+            ack.byte_string(),
+            (CDHT_HOST, CDHT_TRANSFER_BASE_PORT + self.message.sender))
+        ack_client.close()
 
     def kill_server(self):
         """
@@ -276,7 +278,9 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
                 pkt = self.in_transit_packet
                 self._client.send(pkt.byte_string(), self._dest_addr)
             except IndexError:
-                self.__exit__()
+                # Queue empty
+                self.alive = False
+                self._timeout_thread.cancel()
 
     def _resend_packet(self):
         pkt = self.in_transit_packet
