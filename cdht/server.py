@@ -1,7 +1,6 @@
 """Server implementation used in CDHT."""
 import logging
 import random
-import socket
 import socketserver
 import time
 from base64 import b64decode, b64encode
@@ -98,9 +97,25 @@ class FileMessageHandler(MessageDeserializerMixin,
                                    recv_file=self.receive_filename) as server:
                 server.peer = self.server.peer
                 server.serve_forever()
+        elif action == Action.PEER_DEPARTURE:
+            self.peer_depart()
         else:
             raise InvalidMessageError(
                 f'Invalid message over TCP: {self.message}')
+
+    def peer_depart(self):
+        if (self.message.sender == self.server.peer.succ_peer_id
+                or self.message.sender == self.server.peer.succ_peer_id_2):
+            logger.info(
+                f'Peer {self.message.sender} will depart from network.')
+            self.server.peer.succ_peer_id = self.message.succ
+            self.server.peer.succ_peer_id_2 = self.message.succ2
+            logger.info(
+                f'My first successor is now peer {self.server.peer.succ_peer_id}'
+            )
+            logger.info(
+                f'My second successor is now peer {self.server.peer.succ_peer_id_2}'
+            )
 
     def forward(self):
         """File is not on this host, forward request to immediate successor."""

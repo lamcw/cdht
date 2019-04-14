@@ -1,40 +1,22 @@
 """
 Application layer protocol design.
 
-0. Joining the network
+0. Departing the network (gracefully)
 ======================
-10 send to 2:
+10 send to 8:
 {
     'sender': 10,
-    'action': PEER_QUERY
+    'action': PEER_DEPARTURE,
+    'succ': 12,
+    'succ2': 15
 }
 
-9 receive:
-{
-    'receiver': 10,
-    'action': PEER_RESPONSE,
-    'pred': 9,
-    'succ': 11
-}
-
-{
-    'receiver': 9,
-    'sender': 10,
-    'action': JOIN,
-}
-
-10 send to 11:
+10 send to 5:
 {
     'sender': 10,
-    'action': PEER_QUERY,
-}
-
-10 receive:
-{
-    'receiver': 11,
-    'action': PEER_RESPONSE,
-    'pred': 9,
-    'succ': 12
+    'action': PEER_DEPARTURE,
+    'succ': 8,
+    'succ2': 12
 }
 
 1. Ping (UDP)
@@ -172,8 +154,8 @@ class Action(IntEnum):
 
     PEER_QUERY = 1
     PEER_RESPONSE = 2
-    JOIN = 3
-    LEAVE = 4
+    PEER_DEPARTURE = 3
+    # LEAVE = 4
     PING_REQUEST = 5
     PING_RESPONSE = 6
     FILE_REQUEST = 7

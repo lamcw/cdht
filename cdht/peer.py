@@ -33,8 +33,7 @@ class Peer:
         self._id = peer_id
         self.pred_peer_id = pred_peer_id
         self.pred_peer_id_2 = pred_peer_id_2
-        self.succ_peer_id = succ_peer_id
-        self.succ_peer_id_2 = succ_peer_id_2
+        self._successors = [succ_peer_id, succ_peer_id_2]
 
         self._mss = mss
         self._drop_prob = drop_prob
@@ -48,10 +47,10 @@ class Peer:
             target=self._ping_server.serve_forever)
 
         self._ping_succ_thread = threading.Thread(target=self.ping_host,
-                                                  args=(self.succ_peer_id, ),
+                                                  args=(1, ),
                                                   daemon=True)
         self._ping_succ2_thread = threading.Thread(
-            target=self.ping_host, args=(self.succ_peer_id_2, ), daemon=True)
+            target=self.ping_host, args=(2, ), daemon=True)
 
         tcp_addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self._id)
         self._file_server = socketserver.ThreadingTCPServer(
@@ -71,6 +70,22 @@ class Peer:
     @property
     def drop_prob(self):
         return self._drop_prob
+
+    @property
+    def succ_peer_id(self):
+        return self._successors[0]
+
+    @succ_peer_id.setter
+    def succ_peer_id(self, peer_id):
+        self._successors[0] = peer_id
+
+    @property
+    def succ_peer_id_2(self):
+        return self._successors[1]
+
+    @succ_peer_id_2.setter
+    def succ_peer_id_2(self, peer_id):
+        self._successors[1] = peer_id
 
     def start(self):
         """Start the peer."""
@@ -93,7 +108,7 @@ class Peer:
         assert (not self._file_server_thread.is_alive())
 
     def ping_host(self,
-                  succ_peer_id,
+                  succ,
                   interval=CDHT_PING_INTERVAL_SEC,
                   timeout=CDHT_PING_TIMEOUT_SEC,
                   retries=CDHT_PING_RETRIES):
@@ -102,16 +117,16 @@ class Peer:
 
         :param succ_peer_id: ID of peer to ping
         """
-        msg = Message(Action.PING_REQUEST)
-        msg.sender = self.id
-        msg.succ = 1 if succ_peer_id == self.succ_peer_id else 2
-
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.settimeout(timeout)
             try_count = 0
-            addr = (CDHT_HOST, CDHT_UDP_BASE_PORT + succ_peer_id)
-
+            msg = Message(Action.PING_REQUEST)
+            msg.sender = self.id
+            msg.succ = succ
             while True:
+                # smh I don't like this hack
+                succ_peer_id = self.succ_peer_id if succ == 1 else self.succ_peer_id_2
+                addr = (CDHT_HOST, CDHT_UDP_BASE_PORT + succ_peer_id)
                 sock.sendto(bytes(msg.format(), MESSAGE_ENCODING), addr)
                 try:
                     data = sock.recv(1024)
@@ -146,6 +161,7 @@ class Peer:
             request.sender = self.id
             request.filename = filename
             request_client.send(request.byte_string())
+            request_client.close()
             logger.info(
                 f'File request message for {filename} has been sent to '
                 f'my successor')
@@ -154,5 +170,21 @@ class Peer:
                              'that it is requesting.')
 
     def depart_network(self):
-        logger.info(f'Peer {self.id} will depart from the network.')
+        def make_msg(succ, succ2):
+            msg = Message(Action.PEER_DEPARTURE)
+            msg.sender = self.id
+            msg.succ = succ
+            msg.succ2 = succ2
+            return msg
+
+        pred_addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self.pred_peer_id)
+        pred2_addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self.pred_peer_id_2)
+        pred_client = TCPClient(pred_addr)
+        pred_client2 = TCPClient(pred2_addr)
+        pred_client.send(
+            make_msg(self.succ_peer_id, self.succ_peer_id_2).byte_string())
+        pred_client2.send(
+            make_msg(self.pred_peer_id, self.succ_peer_id).byte_string())
+        pred_client.close()
+        pred_client2.close()
         self.stop()
