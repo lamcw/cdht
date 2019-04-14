@@ -72,7 +72,7 @@ class PingHandler(MessageDeserializerMixin,
         self.wfile.write(bytes(response.format(), MESSAGE_ENCODING))
 
 
-class FileMessageHandler(MessageDeserializerMixin,
+class CDHTMessageHandler(MessageDeserializerMixin,
                          socketserver.StreamRequestHandler):
     receive_filename = 'received_file.pdf'
 
@@ -99,6 +99,11 @@ class FileMessageHandler(MessageDeserializerMixin,
                 server.serve_forever()
         elif action == Action.PEER_DEPARTURE:
             self.peer_depart()
+        elif action == Action.SUCC_QUERY:
+            response = Message(Action.SUCC_QUERY_RESPONSE)
+            response.sender = self.server.peer.id
+            response.succ = self.server.peer.succ_peer_id
+            self.wfile.write(response.byte_string())
         else:
             raise InvalidMessageError(
                 f'Invalid message over TCP: {self.message}')

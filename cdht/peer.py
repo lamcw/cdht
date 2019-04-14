@@ -16,7 +16,7 @@ from .config import (CDHT_HOST, CDHT_PING_INTERVAL_SEC, CDHT_PING_RETRIES,
                      CDHT_UDP_BASE_PORT)
 from .protocol import (MESSAGE_ENCODING, Action, InvalidMessageError, Message,
                        key_match_peer)
-from .server import FileMessageHandler, PingHandler
+from .server import CDHTMessageHandler, PingHandler
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +49,13 @@ class Peer:
         self._ping_succ_thread = threading.Thread(target=self.ping_host,
                                                   args=(1, ),
                                                   daemon=True)
-        self._ping_succ2_thread = threading.Thread(
-            target=self.ping_host, args=(2, ), daemon=True)
+        self._ping_succ2_thread = threading.Thread(target=self.ping_host,
+                                                   args=(2, ),
+                                                   daemon=True)
 
         tcp_addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self._id)
         self._file_server = socketserver.ThreadingTCPServer(
-            tcp_addr, FileMessageHandler)
+            tcp_addr, CDHTMessageHandler)
         self._file_server.peer = self
         self._file_server_thread = threading.Thread(
             target=self._file_server.serve_forever)
@@ -127,7 +128,7 @@ class Peer:
                 # smh I don't like this hack
                 succ_peer_id = self.succ_peer_id if succ == 1 else self.succ_peer_id_2
                 addr = (CDHT_HOST, CDHT_UDP_BASE_PORT + succ_peer_id)
-                sock.sendto(bytes(msg.format(), MESSAGE_ENCODING), addr)
+                sock.sendto(msg.byte_string(), addr)
                 try:
                     data = sock.recv(1024)
                     recv_msg = Message.from_raw_buffer(data)
@@ -143,8 +144,25 @@ class Peer:
                     if try_count >= retries:
                         logger.warning(
                             f'Peer {succ_peer_id} is no longer alive.')
-                        # TODO contact succ and find out who should connect to
-                        return
+                        # contact succ and find out who should connect to
+                        if succ == 1:
+                            self.succ_peer_id = self.succ_peer_id_2
+                            new_succ = self.query_successor(
+                                self.succ_peer_id_2)
+                            self.succ_peer_id_2 = new_succ
+                            logger.info(
+                                f'My first successor is now peer {self.succ_peer_id_2}.'
+                            )
+                            logger.info(
+                                f'My second successor is now peer {new_succ}')
+                        else:
+                            new_succ = self.query_successor(self.succ_peer_id)
+                            self.succ_peer_id_2 = new_succ
+                            logger.info(
+                                f'My first successor is now peer {self.succ_peer_id}.'
+                            )
+                            logger.info(
+                                f'My second successor is now peer {new_succ}')
                     else:
                         # retry ping, skip sleep(interval)
                         continue
@@ -152,6 +170,15 @@ class Peer:
                     logger.exception('Network error', e)
                 # sleep until next ping
                 sleep(interval)
+
+    def query_successor(self, peer):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            msg = Message(Action.SUCC_QUERY)
+            msg.sender = self.id
+            sock.connect((CDHT_HOST, CDHT_TCP_BASE_PORT + peer))
+            sock.sendall(msg.byte_string())
+            response = Message.from_raw_buffer(sock.recv(1024))
+            return response.succ
 
     def request_file(self, filename):
         if not key_match_peer(self, filename):

@@ -19,6 +19,19 @@ Application layer protocol design.
     'succ2': 12
 }
 
+0.5 Peer churn
+==============
+{
+    'sender': 4,
+    'action': SUCC_QUERY
+}
+
+{
+    'sender': 8,
+    'action': SUCC_QUERY_RESPONSE,
+    'succ': 12
+}
+
 1. Ping (UDP)
 =======
 Send:
@@ -76,9 +89,6 @@ Receive:
     'last': true
     'raw': ...
 }
-
-3. Departing the network
-========================
 """
 
 import json
@@ -152,17 +162,16 @@ class Action(IntEnum):
 
     INVALID = -1
 
-    PEER_QUERY = 1
-    PEER_RESPONSE = 2
+    SUCC_QUERY = 1
+    SUCC_QUERY_RESPONSE = 2
     PEER_DEPARTURE = 3
-    # LEAVE = 4
-    PING_REQUEST = 5
-    PING_RESPONSE = 6
-    FILE_REQUEST = 7
-    FILE_REQUEST_FORWARD = 8
-    FILE_REQUEST_ACK = 9
-    FILE_TRANSFER = 10
-    FILE_TRANSFER_ACK = 11
+    PING_REQUEST = 4
+    PING_RESPONSE = 5
+    FILE_REQUEST = 6
+    FILE_REQUEST_FORWARD = 7
+    FILE_REQUEST_ACK = 8
+    FILE_TRANSFER = 9
+    FILE_TRANSFER_ACK = 10
 
 
 class Message(JsonSerializable, JsonDeserializable):
