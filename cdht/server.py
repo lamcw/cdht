@@ -142,7 +142,13 @@ class FileSendHandler(MessageDeserializerMixin,
             if msg.ack == self.server.in_transit_packet_ack:
                 pkt = self.server.in_transit_packet
                 self.server.logger.info(
-                    f'rcv\t\ttime\t\t{msg.seq}\t\t{pkt.mss}\t\t{msg.ack}')
+                    f'rcv\t\ttime\t\t{msg.seq}\t\t{msg.rcv}\t\t{msg.ack}')
+                self.server.queue_next_packet()
+                if not self.server.is_alive:
+                    # job queue is empty
+                    Thread(target=self.server.shutdown).start()
+                    return
+                self.server.restart_timer()
                 if random.uniform(0, 1) < self.server.drop_prob:
                     # drop packet
                     self.server.logger.info(
@@ -150,10 +156,7 @@ class FileSendHandler(MessageDeserializerMixin,
                     )
                     return
                 # send next packet
-                self.server.send_next_packet()
-                if not self.server.alive:
-                    Thread(target=self.server.shutdown).start()
-                    return
+                self.server.send_packet()
                 pkt = self.server.in_transit_packet
                 self.server.logger.info(
                     f'snd\t\ttime\t\t{pkt.seq}\t\t{len(pkt.raw)}\t\t{pkt.ack}')
@@ -176,7 +179,7 @@ class FileReceiveHandler(MessageDeserializerMixin,
             self.server.file_buffer_append(msg.raw)
             self.server.logger.info(
                 f'rcv\t\ttime\t\t{msg.seq}\t\t{len(msg.raw)}\t\t{msg.ack}')
-            self.ack(msg.seq + len(msg.raw), msg.mss)
+            self.ack(msg.seq + len(msg.raw), len(msg.raw))
 
             if hasattr(msg, 'last') and msg.last:
                 # handling last packet
@@ -188,20 +191,21 @@ class FileReceiveHandler(MessageDeserializerMixin,
             raise InvalidMessageError(
                 'Message type is not Action.FILE_TRANSFER')
 
-    def ack(self, ack_no, mss):
+    def ack(self, ack_no, pkt_size):
         """
         Send ACK message to packet sender.
 
         :param ack_no: corresponding ack number
-        :param mss: mss used (for logging)
+        :param pkt_size: number of bytes received
         """
         ack = Message(Action.FILE_TRANSFER_ACK)
         ack.sender = self.server.peer.id
         ack.seq = 0
         ack.ack = ack_no
+        ack.rcv = pkt_size
 
         self.server.logger.info(
-            f'snd\t\ttime\t\t{ack.seq}\t\t{mss}\t\t{ack_no}')
+            f'snd\t\ttime\t\t{ack.seq}\t\t{ack.rcv}\t\t{ack.ack}')
         ack_client = UDPClient()
         ack_client.send(
             ack.byte_string(),
@@ -253,7 +257,6 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
         self._in_transit_packet_index = 0
         self._dest_addr = dest_addr
         self._client = UDPClient()
-        self.alive = True
 
         # send the first packet
         self.send_packet()
@@ -272,14 +275,17 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
     def in_transit_packet_ack(self):
         return self.in_transit_packet.seq + len(self.in_transit_packet.raw)
 
+    @property
+    def is_alive(self):
+        return self._in_transit_packet_index < len(self._packets)
+
     def send_packet(self):
-        if self.alive:
+        if self.is_alive:
             try:
                 pkt = self.in_transit_packet
                 self._client.send(pkt.byte_string(), self._dest_addr)
             except IndexError:
                 # Queue empty
-                self.alive = False
                 self._timeout_thread.cancel()
 
     def _resend_packet(self):
@@ -289,11 +295,8 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
         self.restart_timer()
         self.send_packet()
 
-    def send_next_packet(self):
-        if self.alive:
-            self.restart_timer()
-            self._in_transit_packet_index += 1
-            self.send_packet()
+    def queue_next_packet(self):
+        self._in_transit_packet_index += 1
 
     def restart_timer(self):
         self._timeout_thread.cancel()
@@ -306,7 +309,6 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
         # cleanup threads and clients
         self._timeout_thread.cancel()
         self._client.close()
-        self.alive = False
 
 
 def send_file(addr, server_addr, file, mss, drop_prob):
