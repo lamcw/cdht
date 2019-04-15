@@ -112,6 +112,7 @@ def key_match_peer(peer, key):
     :param peer: peer
     :param key: filename
     """
+    key = key.split('.')[0]  # remove extensions
     hashed_value = cdht_hash(key)
     if hashed_value > peer.id:
         if peer.pred_peer_id > peer.id:

@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 class Peer:
+    """Peer that handles file transfer, ping, and manages successors."""
+
     def __init__(self,
                  peer_id,
                  succ_peer_id,
@@ -113,7 +115,7 @@ class Peer:
         """
         Send ping requests to a host using UDP.
 
-        :param succ_peer_id: ID of peer to ping
+        :param succ: peer to ping (1 or 2)
         """
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.settimeout(timeout)
@@ -143,11 +145,11 @@ class Peer:
                             f'Peer {succ_peer_id} is no longer alive.')
                         try:
                             # contact succ and find out who should connect to
-                            self.handle_peer_churn(succ)
+                            self._handle_peer_churn(succ)
                         except socket.error:
                             logger.error(
-                                f'No peer {succ_peer_id}. Not pinging until thread restarts.'
-                            )
+                                f'No peer {succ_peer_id}. Not pinging until '
+                                f'thread restarts.')
                             # exit thread
                             return
                     else:
@@ -158,7 +160,7 @@ class Peer:
                 # sleep until next ping
                 sleep(interval)
 
-    def handle_peer_churn(self, succ):
+    def _handle_peer_churn(self, succ):
         if succ == 1:
             self.succ_peer_id = self.succ_peer_id_2
             self.succ_peer_id_2 = self.query_successor(self.succ_peer_id_2)
@@ -172,6 +174,11 @@ class Peer:
                 f'My second successor is now peer {self.succ_peer_id_2}')
 
     def query_successor(self, peer):
+        """
+        Query peer for its successor.
+
+        :param peer: peer to query for
+        """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             msg = Message(Action.SUCC_QUERY)
             msg.sender = self.id
@@ -181,6 +188,11 @@ class Peer:
             return response.succ
 
     def request_file(self, filename):
+        """
+        Search for a file, and send a request for the file to network.
+
+        :param filename: name of the file
+        """
         if not key_match_peer(self, filename):
             addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self.succ_peer_id)
             request_client = TCPClient(addr)
@@ -196,6 +208,8 @@ class Peer:
                              'that it is requesting.')
 
     def depart_network(self):
+        """Gracefully depart from network."""
+
         def make_msg(succ, succ2):
             msg = Message(Action.PEER_DEPARTURE)
             msg.sender = self.id

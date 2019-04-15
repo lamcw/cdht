@@ -8,10 +8,11 @@ from copy import deepcopy
 from threading import Thread, Timer
 
 from .client import TCPClient, UDPClient
-from .config import (CDHT_HOST, CDHT_TCP_BASE_PORT, CDHT_TRANSFER_BASE_PORT,
-                     CDHT_TRANSFER_TIMEOUT_SEC, CDHT_UDP_BASE_PORT)
-from .protocol import (MESSAGE_ENCODING, Action, InvalidMessageError, Message,
-                       key_match_peer)
+from .config import (CDHT_HOST, CDHT_TCP_BASE_PORT,
+                         CDHT_TRANSFER_BASE_PORT, CDHT_TRANSFER_TIMEOUT_SEC,
+                         CDHT_UDP_BASE_PORT)
+from .protocol import (MESSAGE_ENCODING, Action, InvalidMessageError,
+                           Message, key_match_peer)
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +57,8 @@ class PingHandler(MessageDeserializerMixin,
         if self.message.action != Action.PING_REQUEST:
             raise InvalidMessageError('Not a ping request.')
 
-        logger.info(
-            f'A ping request message was received from Peer {self.message.sender}'
-        )
+        logger.info(f'A ping request message was received from Peer '
+                    f'{self.message.sender}')
 
         if self.message.succ == 1:
             self.server.peer.pred_peer_id = self.message.sender
@@ -74,6 +74,8 @@ class PingHandler(MessageDeserializerMixin,
 
 class CDHTMessageHandler(MessageDeserializerMixin,
                          socketserver.StreamRequestHandler):
+    """Handles general cdht messages exchange."""
+
     receive_filename = 'received_file.pdf'
 
     def handle(self):
@@ -109,18 +111,17 @@ class CDHTMessageHandler(MessageDeserializerMixin,
                 f'Invalid message over TCP: {self.message}')
 
     def peer_depart(self):
+        """Set peer successors according to received message."""
         if (self.message.sender == self.server.peer.succ_peer_id
                 or self.message.sender == self.server.peer.succ_peer_id_2):
             logger.info(
                 f'Peer {self.message.sender} will depart from network.')
             self.server.peer.succ_peer_id = self.message.succ
             self.server.peer.succ_peer_id_2 = self.message.succ2
-            logger.info(
-                f'My first successor is now peer {self.server.peer.succ_peer_id}'
-            )
-            logger.info(
-                f'My second successor is now peer {self.server.peer.succ_peer_id_2}'
-            )
+            logger.info(f'My first successor is now peer '
+                        f'{self.server.peer.succ_peer_id}')
+            logger.info(f'My second successor is now peer '
+                        f'{self.server.peer.succ_peer_id_2}')
 
     def forward(self):
         """File is not on this host, forward request to immediate successor."""
@@ -155,6 +156,8 @@ class CDHTMessageHandler(MessageDeserializerMixin,
 
 class FileSendHandler(MessageDeserializerMixin,
                       socketserver.DatagramRequestHandler):
+    """Handle file sending related messages."""
+
     def handle(self):
         msg = self.message
         action = msg.action
@@ -171,9 +174,8 @@ class FileSendHandler(MessageDeserializerMixin,
                 self.server.restart_timer()
                 if random.uniform(0, 1) < self.server.drop_prob:
                     # drop packet
-                    self.server.logger.info(
-                        f'drop\t\ttime\t\t{pkt.seq}\t\t{len(pkt.raw)}\t\t{pkt.ack}'
-                    )
+                    self.server.logger.info(f'drop\t\ttime\t\t{pkt.seq}'
+                                            f'\t\t{len(pkt.raw)}\t\t{pkt.ack}')
                     return
                 # send next packet
                 self.server.send_packet()
@@ -192,6 +194,8 @@ class FileSendHandler(MessageDeserializerMixin,
 
 class FileReceiveHandler(MessageDeserializerMixin,
                          socketserver.DatagramRequestHandler):
+    """Handle file receive related messages."""
+
     def handle(self):
         """Handle received file chunks."""
         if self.message.action == Action.FILE_TRANSFER:
@@ -331,14 +335,13 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
 
 def send_file(addr, server_addr, file, mss, drop_prob):
     """Send file to host."""
-    # TODO remove
-    file = file + ".pdf"
     with open(file, 'rb') as f:
         buffer = f.read()
         # To serialize message to json, convert to base64 bytes, then
         # decode according to default encoding because json cannot handle bytes
         b64_buffer = b64encode(buffer)
         utf8_buffer = b64_buffer.decode(MESSAGE_ENCODING)
+        # separates into chunks of size `mss`
         chunks = [
             utf8_buffer[0 + i:i + mss] for i in range(0, len(utf8_buffer), mss)
         ]
