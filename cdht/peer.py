@@ -141,24 +141,15 @@ class Peer:
                     if try_count >= retries:
                         logger.warning(
                             f'Peer {succ_peer_id} is no longer alive.')
-                        # contact succ and find out who should connect to
-                        if succ == 1:
-                            self.succ_peer_id = self.succ_peer_id_2
-                            self.succ_peer_id_2 = self.query_successor(self.succ_peer_id_2)
-                            logger.info(
-                                f'My first successor is now peer {self.succ_peer_id}.'
+                        try:
+                            # contact succ and find out who should connect to
+                            self.handle_peer_churn(succ)
+                        except socket.error:
+                            logger.error(
+                                f'No peer {succ_peer_id}. Not pinging until thread restarts.'
                             )
-                            logger.info(
-                                f'My second successor is now peer {self.succ_peer_id_2}'
-                            )
-                        else:
-                            self.succ_peer_id_2 = self.query_successor(self.succ_peer_id)
-                            logger.info(
-                                f'My first successor is now peer {self.succ_peer_id}.'
-                            )
-                            logger.info(
-                                f'My second successor is now peer {self.succ_peer_id_2}'
-                            )
+                            # exit thread
+                            return
                     else:
                         # retry ping, skip sleep(interval)
                         continue
@@ -167,8 +158,20 @@ class Peer:
                 # sleep until next ping
                 sleep(interval)
 
+    def handle_peer_churn(self, succ):
+        if succ == 1:
+            self.succ_peer_id = self.succ_peer_id_2
+            self.succ_peer_id_2 = self.query_successor(self.succ_peer_id_2)
+            logger.info(f'My first successor is now peer {self.succ_peer_id}.')
+            logger.info(
+                f'My second successor is now peer {self.succ_peer_id_2}')
+        else:
+            self.succ_peer_id_2 = self.query_successor(self.succ_peer_id)
+            logger.info(f'My first successor is now peer {self.succ_peer_id}.')
+            logger.info(
+                f'My second successor is now peer {self.succ_peer_id_2}')
+
     def query_successor(self, peer):
-        # TODO catch connection refused
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             msg = Message(Action.SUCC_QUERY)
             msg.sender = self.id
