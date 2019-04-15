@@ -14,9 +14,6 @@ class BaseClient(ABC):
     def send(self, buf):
         pass
 
-    def close(self):
-        self.socket.close()
-
 
 class UDPClient(BaseClient):
     def __init__(self):

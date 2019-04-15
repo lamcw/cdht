@@ -14,8 +14,7 @@ from .client import TCPClient
 from .config import (CDHT_HOST, CDHT_PING_INTERVAL_SEC, CDHT_PING_RETRIES,
                      CDHT_PING_TIMEOUT_SEC, CDHT_TCP_BASE_PORT,
                      CDHT_UDP_BASE_PORT)
-from .protocol import (MESSAGE_ENCODING, Action, InvalidMessageError, Message,
-                       key_match_peer)
+from .protocol import Action, InvalidMessageError, Message, key_match_peer
 from .server import CDHTMessageHandler, PingHandler
 
 logger = logging.getLogger(__name__)
@@ -105,8 +104,6 @@ class Peer:
         self._ping_server_thread.join()
         self._file_server_thread.join()
         logger.debug('Servers all down.')
-        assert (not self._ping_server_thread.is_alive())
-        assert (not self._file_server_thread.is_alive())
 
     def ping_host(self,
                   succ,
@@ -147,22 +144,21 @@ class Peer:
                         # contact succ and find out who should connect to
                         if succ == 1:
                             self.succ_peer_id = self.succ_peer_id_2
-                            new_succ = self.query_successor(
-                                self.succ_peer_id_2)
-                            self.succ_peer_id_2 = new_succ
-                            logger.info(
-                                f'My first successor is now peer {self.succ_peer_id_2}.'
-                            )
-                            logger.info(
-                                f'My second successor is now peer {new_succ}')
-                        else:
-                            new_succ = self.query_successor(self.succ_peer_id)
-                            self.succ_peer_id_2 = new_succ
+                            self.succ_peer_id_2 = self.query_successor(self.succ_peer_id_2)
                             logger.info(
                                 f'My first successor is now peer {self.succ_peer_id}.'
                             )
                             logger.info(
-                                f'My second successor is now peer {new_succ}')
+                                f'My second successor is now peer {self.succ_peer_id_2}'
+                            )
+                        else:
+                            self.succ_peer_id_2 = self.query_successor(self.succ_peer_id)
+                            logger.info(
+                                f'My first successor is now peer {self.succ_peer_id}.'
+                            )
+                            logger.info(
+                                f'My second successor is now peer {self.succ_peer_id_2}'
+                            )
                     else:
                         # retry ping, skip sleep(interval)
                         continue
@@ -172,6 +168,7 @@ class Peer:
                 sleep(interval)
 
     def query_successor(self, peer):
+        # TODO catch connection refused
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             msg = Message(Action.SUCC_QUERY)
             msg.sender = self.id
@@ -188,7 +185,6 @@ class Peer:
             request.sender = self.id
             request.filename = filename
             request_client.send(request.byte_string())
-            request_client.close()
             logger.info(
                 f'File request message for {filename} has been sent to '
                 f'my successor')
@@ -212,6 +208,4 @@ class Peer:
             make_msg(self.succ_peer_id, self.succ_peer_id_2).byte_string())
         pred_client2.send(
             make_msg(self.pred_peer_id, self.succ_peer_id).byte_string())
-        pred_client.close()
-        pred_client2.close()
         self.stop()

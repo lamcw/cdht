@@ -23,7 +23,7 @@ class LogMixin:
         super().__init__(*args, **kwargs)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.INFO)
-        fh = logging.FileHandler(self.log_name, mode='w', delay=True)
+        fh = logging.FileHandler(self.log_name, mode='a', delay=True)
         fh.setLevel(logging.INFO)
         self.logger.addHandler(fh)
         self.logger.propagate = False
@@ -230,7 +230,6 @@ class FileReceiveHandler(MessageDeserializerMixin,
         ack_client.send(
             ack.byte_string(),
             (CDHT_HOST, CDHT_TRANSFER_BASE_PORT + self.message.sender))
-        ack_client.close()
 
     def kill_server(self):
         """
@@ -326,9 +325,8 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
 
     def __exit__(self, *args):
         super().__exit__(*args)
-        # cleanup threads and clients
+        # cleanup threads
         self._timeout_thread.cancel()
-        self._client.close()
 
 
 def send_file(addr, server_addr, file, mss, drop_prob):
