@@ -8,6 +8,7 @@ import logging
 import socket
 import socketserver
 import threading
+from datetime import datetime
 from time import sleep
 
 from .client import TCPClient
@@ -31,6 +32,7 @@ class Peer:
                  drop_prob,
                  pred_peer_id=None,
                  pred_peer_id_2=None):
+        self._start_time = datetime.now()
         self._id = peer_id
         self.pred_peer_id = pred_peer_id
         self.pred_peer_id_2 = pred_peer_id_2
@@ -88,6 +90,11 @@ class Peer:
     @succ_peer_id_2.setter
     def succ_peer_id_2(self, peer_id):
         self._successors[1] = peer_id
+
+    @property
+    def time_elapsed(self):
+        d = datetime.now() - self._start_time
+        return d.total_seconds()
 
     def start(self):
         """Start the peer."""
@@ -209,7 +216,6 @@ class Peer:
 
     def depart_network(self):
         """Gracefully depart from network."""
-
         def make_msg(succ, succ2):
             msg = Message(Action.PEER_DEPARTURE)
             msg.sender = self.id

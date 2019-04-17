@@ -189,7 +189,7 @@ class Message(JsonSerializable, JsonDeserializable):
         :raises InvalidMessageError: if buffer cannot be deserialized
         """
         buf = buffer.decode(encoding)
-        nbytes, data = buf.split('\n')
+        nbytes, data = buf.split('\n', maxsplit=1)
         msg = cls.from_json(data)
         return msg
 

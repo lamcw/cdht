@@ -8,11 +8,10 @@ from copy import deepcopy
 from threading import Thread, Timer
 
 from .client import TCPClient, UDPClient
-from .config import (CDHT_HOST, CDHT_TCP_BASE_PORT,
-                         CDHT_TRANSFER_BASE_PORT, CDHT_TRANSFER_TIMEOUT_SEC,
-                         CDHT_UDP_BASE_PORT)
-from .protocol import (MESSAGE_ENCODING, Action, InvalidMessageError,
-                           Message, key_match_peer)
+from .config import (CDHT_HOST, CDHT_TCP_BASE_PORT, CDHT_TRANSFER_BASE_PORT,
+                     CDHT_TRANSFER_TIMEOUT_SEC, CDHT_UDP_BASE_PORT)
+from .protocol import (MESSAGE_ENCODING, Action, InvalidMessageError, Message,
+                       key_match_peer)
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +150,7 @@ class CDHTMessageHandler(MessageDeserializerMixin,
         # wait for client to set up a server to receive packets
         time.sleep(0.05)
         send_file(addr, server_addr, self.message.filename,
-                  self.server.peer.mss, self.server.peer.drop_prob)
+                  self.server.peer.drop_prob, self.server.peer)
 
 
 class FileSendHandler(MessageDeserializerMixin,
@@ -165,7 +164,8 @@ class FileSendHandler(MessageDeserializerMixin,
             if msg.ack == self.server.in_transit_packet_ack:
                 pkt = self.server.in_transit_packet
                 self.server.logger.info(
-                    f'rcv\t\ttime\t\t{msg.seq}\t\t{msg.rcv}\t\t{msg.ack}')
+                    f'rcv\t\t{self.server.peer.time_elapsed:<20}{msg.seq:<10}'
+                    f'{msg.rcv:<10}{msg.ack:<10}')
                 self.server.queue_next_packet()
                 if not self.server.is_alive:
                     # job queue is empty
@@ -174,14 +174,16 @@ class FileSendHandler(MessageDeserializerMixin,
                 self.server.restart_timer()
                 if random.uniform(0, 1) < self.server.drop_prob:
                     # drop packet
-                    self.server.logger.info(f'drop\t\ttime\t\t{pkt.seq}'
-                                            f'\t\t{len(pkt.raw)}\t\t{pkt.ack}')
+                    self.server.logger.info(
+                        f'drop\t\t{self.server.peer.time_elapsed:<20}{pkt.seq:<10}'
+                        f'{len(pkt.raw):<10}{pkt.ack:<10}')
                     return
                 # send next packet
                 self.server.send_packet()
                 pkt = self.server.in_transit_packet
                 self.server.logger.info(
-                    f'snd\t\ttime\t\t{pkt.seq}\t\t{len(pkt.raw)}\t\t{pkt.ack}')
+                    f'snd\t\t{self.server.peer.time_elapsed:<20}{pkt.seq:<10}'
+                    f'{len(pkt.raw):<10}{pkt.ack:<10}')
             elif msg.ack > self.server.in_transit_packet_ack:
                 raise InvalidMessageError(f'ACKing future packets: '
                                           'ack={self.message.ack}')
@@ -202,7 +204,8 @@ class FileReceiveHandler(MessageDeserializerMixin,
             msg = self.message
             self.server.file_buffer_append(msg.raw)
             self.server.logger.info(
-                f'rcv\t\ttime\t\t{msg.seq}\t\t{len(msg.raw)}\t\t{msg.ack}')
+                f'rcv\t\t{self.server.peer.time_elapsed:<20}{msg.seq:<10}'
+                f'{len(msg.raw):<10}{msg.ack:<10}')
             self.ack(msg.seq + len(msg.raw), len(msg.raw))
 
             if hasattr(msg, 'last') and msg.last:
@@ -229,7 +232,8 @@ class FileReceiveHandler(MessageDeserializerMixin,
         ack.rcv = pkt_size
 
         self.server.logger.info(
-            f'snd\t\ttime\t\t{ack.seq}\t\t{ack.rcv}\t\t{ack.ack}')
+            f'snd\t\t{self.server.peer.time_elapsed:<20}{ack.seq:<10}'
+            f'{ack.rcv:<10}{ack.ack:<10}')
         ack_client = UDPClient()
         ack_client.send(
             ack.byte_string(),
@@ -271,6 +275,7 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
                  dest_addr,
                  packets,
                  drop_prob,
+                 peer=None,
                  bind_and_activate=True,
                  **kwargs):
         super().__init__(server_address, RequestHandlerClass,
@@ -280,12 +285,14 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
         self._in_transit_packet_index = 0
         self._dest_addr = dest_addr
         self._client = UDPClient()
+        if peer:
+            self.peer = peer
 
         # send the first packet
         self.send_packet()
         pkt = self.in_transit_packet
-        self.logger.info(
-            f'snd\t\ttime\t\t{pkt.seq}\t\t{len(pkt.raw)}\t\t{pkt.ack}')
+        self.logger.info(f'snd\t\t{self.peer.time_elapsed:<20}{pkt.seq:<10}'
+                         f'{len(pkt.raw):<10}{pkt.ack:<10}')
         self._timeout_thread = Timer(CDHT_TRANSFER_TIMEOUT_SEC,
                                      self._resend_packet)
         self._timeout_thread.start()
@@ -313,8 +320,8 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
 
     def _resend_packet(self):
         pkt = self.in_transit_packet
-        self.logger.info(
-            f'RTX\t\ttime\t\t{pkt.seq}\t\t{len(pkt.raw)}\t\t{pkt.ack}')
+        self.logger.info(f'RTX\t\t{self.peer.time_elapsed:<20}{pkt.seq:<10}'
+                         f'{len(pkt.raw):<10}{pkt.ack:<10}')
         self.restart_timer()
         self.send_packet()
 
@@ -333,7 +340,7 @@ class FileSendServer(LogMixin, socketserver.UDPServer):
         self._timeout_thread.cancel()
 
 
-def send_file(addr, server_addr, file, mss, drop_prob):
+def send_file(addr, server_addr, file, drop_prob, peer):
     """Send file to host."""
     with open(file, 'rb') as f:
         buffer = f.read()
@@ -343,7 +350,8 @@ def send_file(addr, server_addr, file, mss, drop_prob):
         utf8_buffer = b64_buffer.decode(MESSAGE_ENCODING)
         # separates into chunks of size `mss`
         chunks = [
-            utf8_buffer[0 + i:i + mss] for i in range(0, len(utf8_buffer), mss)
+            utf8_buffer[0 + i:i + peer.mss]
+            for i in range(0, len(utf8_buffer), peer.mss)
         ]
 
     def packet_generator():
@@ -351,8 +359,8 @@ def send_file(addr, server_addr, file, mss, drop_prob):
         for n, chunk in enumerate(chunks):
             packet = Message(Action.FILE_TRANSFER)
             packet.sender = server_addr[1] - CDHT_TRANSFER_BASE_PORT
-            packet.seq = n * mss + 1
-            packet.mss = mss
+            packet.seq = n * peer.mss + 1
+            packet.mss = peer.mss
             packet.raw = chunk
             packet.ack = 0
             if n == last:
@@ -360,7 +368,11 @@ def send_file(addr, server_addr, file, mss, drop_prob):
             yield packet
 
     logger.info('We now start sending the file...')
-    with FileSendServer(server_addr, FileSendHandler, addr,
-                        list(packet_generator()), drop_prob) as server:
+    with FileSendServer(server_addr,
+                        FileSendHandler,
+                        addr,
+                        list(packet_generator()),
+                        drop_prob,
+                        peer=peer) as server:
         server.serve_forever()
     logger.info('The file is sent')
