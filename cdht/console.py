@@ -38,7 +38,7 @@ class CDHTPrompt(Cmd):
             return
 
         try:
-            self._peer.request_file(arg + '.pdf')
+            self._peer.request_file(arg)
         except ValueError as e:
             print(e)
 
