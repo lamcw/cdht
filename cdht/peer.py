@@ -175,6 +175,7 @@ class Peer:
             logger.info(
                 f'My second successor is now peer {self.succ_peer_id_2}')
         else:
+            sleep(0.05)
             self.succ_peer_id_2 = self.query_successor(self.succ_peer_id)
             logger.info(f'My first successor is now peer {self.succ_peer_id}.')
             logger.info(
