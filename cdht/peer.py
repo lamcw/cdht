@@ -25,6 +25,10 @@ class MessageServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
 
 
+class PingServer(socketserver.ThreadingUDPServer):
+    allow_reuse_address = True
+
+
 class Peer:
     """Peer that handles file transfer, ping, and manages successors."""
 
@@ -47,8 +51,7 @@ class Peer:
 
         udp_addr = (CDHT_HOST, CDHT_UDP_BASE_PORT + self._id)
 
-        self._ping_server = socketserver.ThreadingUDPServer(
-            udp_addr, PingHandler)
+        self._ping_server = PingServer(udp_addr, PingHandler)
         self._ping_server.peer = self
         self._ping_server_thread = threading.Thread(
             target=self._ping_server.serve_forever)
