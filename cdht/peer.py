@@ -21,6 +21,10 @@ from .server import CDHTMessageHandler, PingHandler
 logger = logging.getLogger(__name__)
 
 
+class MessageServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+
+
 class Peer:
     """Peer that handles file transfer, ping, and manages successors."""
 
@@ -57,8 +61,7 @@ class Peer:
                                                    daemon=True)
 
         tcp_addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self._id)
-        self._file_server = socketserver.ThreadingTCPServer(
-            tcp_addr, CDHTMessageHandler)
+        self._file_server = MessageServer(tcp_addr, CDHTMessageHandler)
         self._file_server.peer = self
         self._file_server_thread = threading.Thread(
             target=self._file_server.serve_forever)
@@ -217,6 +220,7 @@ class Peer:
 
     def depart_network(self):
         """Gracefully depart from network."""
+
         def make_msg(succ, succ2):
             msg = Message(Action.PEER_DEPARTURE)
             msg.sender = self.id
