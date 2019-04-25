@@ -90,7 +90,7 @@ class CDHTMessageHandler(MessageDeserializerMixin,
         elif action == Action.FILE_REQUEST_ACK:
             logger.info(f'Received a response message from peer '
                         f'{self.message.sender}, which  has the file '
-                        f'{self.message.filename}')
+                        f'{self.message.filename.split(".")[0]}')
             logger.info('We now start receiving the file...')
             addr = (CDHT_HOST, CDHT_TRANSFER_BASE_PORT + self.server.peer.id)
             with FileReceiveServer(addr,
@@ -124,7 +124,8 @@ class CDHTMessageHandler(MessageDeserializerMixin,
 
     def forward(self):
         """File is not on this host, forward request to immediate successor."""
-        logger.info(f'File {self.message.filename} is not stored here.')
+        logger.info(f'File {self.message.filename.split(".")[0]} is not '
+                    f'stored here.')
         addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self.server.peer.succ_peer_id)
         forward_client = TCPClient(addr)
         forwarded_msg = deepcopy(self.message)
@@ -134,7 +135,7 @@ class CDHTMessageHandler(MessageDeserializerMixin,
 
     def process_request(self):
         """File is on this host, ack and transmit."""
-        logger.info(f'File {self.message.filename} is here.')
+        logger.info(f'File {self.message.filename.split(".")[0]} is here.')
         addr = (CDHT_HOST, CDHT_TCP_BASE_PORT + self.message.sender)
         response_client = TCPClient(addr)
         response = Message(Action.FILE_REQUEST_ACK)
@@ -175,8 +176,8 @@ class FileSendHandler(MessageDeserializerMixin,
                 if random.uniform(0, 1) < self.server.drop_prob:
                     # drop packet
                     self.server.logger.info(
-                        f'drop\t\t{self.server.peer.time_elapsed:<20}{pkt.seq:<10}'
-                        f'{len(pkt.raw):<10}{pkt.ack:<10}')
+                        f'drop\t\t{self.server.peer.time_elapsed:<20}'
+                        f'{pkt.seq:<10}{len(pkt.raw):<10}{pkt.ack:<10}')
                     return
                 # send next packet
                 self.server.send_packet()
